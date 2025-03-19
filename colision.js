@@ -4,77 +4,101 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
+let circles = [];
+let clickedCount = 0; // Contador de clics en los círculos
+
+// Función para oscurecer un color (para el contorno)
+function darkenColor(hex, amount = 30) {
+    let color = parseInt(hex.slice(1), 16);
+    let r = Math.max((color >> 16) - amount, 0);
+    let g = Math.max(((color >> 8) & 0x00FF) - amount, 0);
+    let b = Math.max((color & 0x0000FF) - amount, 0);
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
 // Clase Circle con métodos POO
 class Circle {
-    constructor(x, y, radius, color, speed) {
+    constructor(x, radius, color, speed) {
         this.posX = x;
-        this.posY = y;
+        this.posY = -radius; // Inicia justo después del margen superior
         this.radius = radius;
-        this.originalColor = color;
         this.color = color;
+        this.borderColor = darkenColor(color, 50);
         this.speed = speed;
-        this.dx = (Math.random() < 0.5 ? -1 : 1) * this.speed;
-        this.dy = (Math.random() < 0.5 ? -1 : 1) * this.speed;
     }
 
-    // Dibujar solo el contorno del círculo
+    // Dibujar círculo con relleno degradado y contorno
     draw(context) {
+        let gradient = context.createRadialGradient(
+            this.posX, this.posY, this.radius * 0.3, // Centro del degradado
+            this.posX, this.posY, this.radius // Extensión total
+        );
+        gradient.addColorStop(0, "white"); // Centro más claro
+        gradient.addColorStop(1, this.color); // Borde con color base
+
         context.beginPath();
-        context.strokeStyle = this.color;
+        context.fillStyle = gradient; // Aplicar degradado
+        context.strokeStyle = this.borderColor; // Contorno oscuro
         context.lineWidth = 3;
         context.arc(this.posX, this.posY, this.radius, 0, Math.PI * 2);
+        context.fill();
         context.stroke();
         context.closePath();
     }
 
-    // Actualizar posición y rebotar en los bordes
+    // Mover círculo hacia abajo e inicializarlo arriba si se sale del canvas
     update() {
-        this.posX += this.dx;
-        this.posY += this.dy;
+        this.posY += this.speed;
 
-        if (this.posX + this.radius > canvas.width || this.posX - this.radius < 0) {
-            this.dx = -this.dx;
-        }
-        if (this.posY + this.radius > canvas.height || this.posY - this.radius < 0) {
-            this.dy = -this.dy;
+        // Si el círculo sale del canvas, reaparece en la parte superior
+        if (this.posY - this.radius > canvas.height) {
+            this.resetPosition();
         }
     }
 
-    // Detectar colisión con otro círculo y hacer que reboten
-    checkCollision(otherCircle) {
-        const dx = this.posX - otherCircle.posX;
-        const dy = this.posY - otherCircle.posY;
+    // Reiniciar la posición del círculo cuando desaparece o es clickeado
+    resetPosition() {
+        this.posY = -this.radius;
+        this.posX = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+        this.speed = Math.random() * 3 + 2; // Velocidad aleatoria entre 2 y 5
+    }
+
+    // Verificar si un clic está dentro del círculo
+    isClicked(mouseX, mouseY) {
+        const dx = this.posX - mouseX;
+        const dy = this.posY - mouseY;
         const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < this.radius + otherCircle.radius) {
-            // Flasheo en azul
-            this.color = "#0000FF";
-            otherCircle.color = "#0000FF";
-
-            // Invertir dirección de ambos círculos
-            this.dx = -this.dx;
-            this.dy = -this.dy;
-            otherCircle.dx = -otherCircle.dx;
-            otherCircle.dy = -otherCircle.dy;
-
-            // Restaurar color después de 100ms
-            setTimeout(() => {
-                this.color = this.originalColor;
-                otherCircle.color = otherCircle.originalColor;
-            }, 100);
-        }
+        return distance <= this.radius;
     }
 }
 
-// Crear 10 círculos con velocidades entre 1 y 5
-let circles = [];
+// Crear 10 círculos con velocidades entre 2 y 5
 for (let i = 0; i < 10; i++) {
     let radius = Math.random() * 20 + 20;
-    let x = Math.random() * (canvas.width - 2 * radius) + radius;
-    let y = Math.random() * (canvas.height - 2 * radius) + radius;
-    let speed = Math.random() * 4 + 1;
-    let color = `#${Math.floor(Math.random() * 16777215).toString(16)}`;
-    circles.push(new Circle(x, y, radius, color, speed));
+    let x = Math.random() * (canvas.width - radius * 2) + radius;
+    let speed = Math.random() * 3 + 2; // Velocidad aleatoria entre 2 y 5
+    let color = `#${Math.floor(Math.random() * 16777215).toString(16)}`; // Color aleatorio
+    circles.push(new Circle(x, radius, color, speed));
+}
+
+// Detectar clic y reiniciar círculo en la parte superior
+canvas.addEventListener("click", (event) => {
+    const mouseX = event.clientX;
+    const mouseY = event.clientY;
+
+    circles.forEach(circle => {
+        if (circle.isClicked(mouseX, mouseY)) {
+            circle.resetPosition(); // Regresa el círculo arriba
+            clickedCount++; // Incrementa el contador
+        }
+    });
+});
+
+// Dibujar contador de clics en la esquina superior derecha
+function drawCounter() {
+    ctx.fillStyle = "white";
+    ctx.font = "25px Arial";
+    ctx.fillText(`Clics: ${clickedCount}`, canvas.width - 150, 30);
 }
 
 // Animación
@@ -86,12 +110,7 @@ function animate() {
         circle.draw(ctx);
     });
 
-    // Verificar colisiones entre círculos
-    for (let i = 0; i < circles.length; i++) {
-        for (let j = i + 1; j < circles.length; j++) {
-            circles[i].checkCollision(circles[j]);
-        }
-    }
+    drawCounter(); // Mostrar contador de clics
 
     requestAnimationFrame(animate);
 }
